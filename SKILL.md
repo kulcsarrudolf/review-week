@@ -30,7 +30,23 @@ over a time window (default: the last 7 days).
      TODO/FIXME added in their repos. It is slower; skip it otherwise.
    - The script prints one JSON digest to stdout. Capture it.
 
-3. **Read the digest.** Reason from `per_project` (tools, tokens, cost, PRs,
+3. **Handle unknown models (ask permission before editing).** If the digest's
+   `unknown_models` list is non-empty, one or more models were priced with the
+   Opus-tier default because they have no entry in `MODEL_PRICING`. For each such
+   model:
+   - Determine its correct input/output price per 1M tokens. Use the `claude-api`
+     pricing reference as the source of truth. If it is genuinely unknown (e.g.
+     a brand-new model not yet in the reference), ask the user for the rates.
+   - **Ask the user for permission** (AskUserQuestion) before changing anything,
+     showing the model id and the input/output rates you propose to add. Do not
+     edit pricing without explicit approval.
+   - On approval, add a row to `MODEL_PRICING` in `scripts/extract.py` keyed by a
+     stable substring of the model id (usually the family prefix, e.g.
+     `"claude-sonnet-5"`), then re-run the extractor so the report uses the
+     accurate cost. On decline, keep the default estimate and note in the report
+     that the model was priced at the Opus-tier default.
+
+4. **Read the digest.** Reason from `per_project` (tools, tokens, cost, PRs,
    branches, plan-mode use, rework hits, sampled prompts, titles, and `focus`),
    `open_threads`, `repo_todos`, and `focus_matched`. The sampled prompts show
    how the user actually steers Claude; use them for qualitative tips.
@@ -40,11 +56,11 @@ over a time window (default: the last 7 days).
    briefly covering the rest). Mark focus projects in the report (e.g. a
    "(focus)" tag). When no focus is set, weight purely by activity as before.
 
-4. **Write the report** with the eight sections below, then **write it to a file**
+5. **Write the report** with the eight sections below, then **write it to a file**
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
-5. **Measure and append the generation cost.** After the report file exists, run:
+6. **Measure and append the generation cost.** After the report file exists, run:
    ```
    python3 scripts/run_cost.py
    ```
@@ -61,7 +77,7 @@ over a time window (default: the last 7 days).
    Use the real numbers from `run_cost.py` (`total_tokens`, `estimated_cost_usd`).
    State plainly it is a measured lower bound, not an estimate of the whole turn.
 
-6. **Point the user to the file.** After the inline summary, print the full
+7. **Point the user to the file.** After the inline summary, print the full
    report path and a ready-to-run open command on its own line, for example:
    ```
    Full report: ~/.claude/reviews/2026-07-02.md

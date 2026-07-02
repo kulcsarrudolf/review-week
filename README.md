@@ -130,7 +130,9 @@ CACHE_READ_MULT = 0.10          # cache read  ~0.1x input
 CACHE_WRITE_MULT = 1.25         # cache write ~1.25x input (5-minute cache)
 ```
 
-Matching is longest-substring, so `claude-opus-4-8` and dated ids like `claude-haiku-4-5-20251001` resolve automatically, and an unknown model falls back to `DEFAULT_PRICING`. Cache read/write rates are derived per model from its input rate. Add a row or adjust the numbers only if pricing changes or you use a model not listed.
+Matching is longest-substring, so `claude-opus-4-8` and dated ids like `claude-haiku-4-5-20251001` resolve automatically, and an unknown model falls back to `DEFAULT_PRICING`. Cache read/write rates are derived per model from its input rate.
+
+**Self-updating:** if a run encounters a model that has no price entry, the skill flags it (the extractor reports it in `unknown_models`), looks up the correct rate, and asks your permission before adding a row to `MODEL_PRICING`. You never edit the table by hand unless you want to. Decline and the model is priced at the Opus-tier default, noted in the report.
 
 ## Development
 

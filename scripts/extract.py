@@ -53,6 +53,10 @@ DEFAULT_PRICING = (5.0, 25.0)   # unknown model: assume Opus-tier
 CACHE_READ_MULT = 0.10
 CACHE_WRITE_MULT = 1.25
 
+# Placeholder model ids that are not real, billable Claude models; never flag
+# these as "unknown" needing a price entry.
+IGNORE_MODELS = {"unknown", "<synthetic>"}
+
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 # Persistent "focus" tags. Projects listed here get their tips, next-week
@@ -158,6 +162,11 @@ def is_tool_result_only(content):
         if blocks and all(b.get("type") == "tool_result" for b in blocks):
             return True
     return False
+
+
+def pricing_known(model):
+    """True if the model id matches an entry in MODEL_PRICING."""
+    return any(key in (model or "") for key in MODEL_PRICING)
 
 
 def price_for(model):
@@ -534,6 +543,13 @@ def main():
     cur_summary = cur_agg.summary(cur_git)
     prev_summary = prev_agg.summary(prev_git)
 
+    # --- Models with no pricing entry (priced at DEFAULT_PRICING as a guess) ---
+    seen_models = set(cur_agg.tokens_by_model) | set(prev_agg.tokens_by_model)
+    unknown_models = sorted(
+        m for m in seen_models
+        if m not in IGNORE_MODELS and not pricing_known(m)
+    )
+
     # --- Open threads (current window) ---
     open_threads = []
     for sid, (ts, role, is_q, pname, title, cwd) in session_last.items():
@@ -663,6 +679,7 @@ def main():
             "cache_write_mult": CACHE_WRITE_MULT,
             "note": "cost is per-model from each message's model id; unknown models use default",
         },
+        "unknown_models": unknown_models,
         "per_project": per_project,
         "open_threads": open_threads[:25],
         "repo_todos": repo_todos,
