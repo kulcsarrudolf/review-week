@@ -1,4 +1,4 @@
-# review-week
+# claude-review-week
 
 A [Claude Code](https://claude.com/claude-code) skill that reviews how you used Claude Code over the last 7 days and turns it into an actionable weekly report.
 
@@ -32,7 +32,7 @@ Nothing leaves your machine. The extractor is pure standard-library Python 3 and
 Clone into your Claude Code skills directory:
 
 ```sh
-git clone https://github.com/kulcsarrudolf/review-week.git ~/.claude/skills/review-week
+git clone https://github.com/kulcsarrudolf/claude-review-week.git ~/.claude/skills/claude-review-week
 ```
 
 That is all. Claude Code discovers skills in `~/.claude/skills/` automatically.
@@ -42,20 +42,20 @@ That is all. Claude Code discovers skills in `~/.claude/skills/` automatically.
 In Claude Code, run:
 
 ```
-/review-week
+/claude-review-week
 ```
 
 Optional time window (defaults to the last 7 days):
 
 ```
-/review-week 14d
-/review-week 2026-06-25..2026-07-02
+/claude-review-week 14d
+/claude-review-week 2026-06-25..2026-07-02
 ```
 
 You can also run the extractor directly to inspect the raw digest:
 
 ```sh
-python3 ~/.claude/skills/review-week/scripts/extract.py --since 7d | python3 -m json.tool
+python3 ~/.claude/skills/claude-review-week/scripts/extract.py --since 7d | python3 -m json.tool
 ```
 
 ### Extractor options
@@ -76,14 +76,14 @@ Tag one or more projects as your focus and the report weights its tips, next-wee
 In Claude Code, just say it:
 
 ```
-/review-week focus call-center-poc, igemag-ai
-/review-week clear focus
+/claude-review-week focus call-center-poc, igemag-ai
+/claude-review-week clear focus
 ```
 
 Or set it directly:
 
 ```sh
-python3 ~/.claude/skills/review-week/scripts/extract.py --set-focus "call-center-poc,igemag-ai"
+python3 ~/.claude/skills/claude-review-week/scripts/extract.py --set-focus "call-center-poc,igemag-ai"
 ```
 
 The focus set persists in `~/.claude/reviews/focus.json`, so the scheduled weekly run picks it up automatically.
@@ -133,7 +133,7 @@ The skill is two files:
 - `SKILL.md` orchestrates the workflow and defines the report structure.
 - `scripts/extract.py` does the parsing and aggregation.
 
-Since the repo lives at `~/.claude/skills/review-week`, edits take effect immediately: just run `/review-week` again.
+Since the repo lives at `~/.claude/skills/claude-review-week`, edits take effect immediately: just run `/claude-review-week` again.
 
 Ideas for contributions:
 

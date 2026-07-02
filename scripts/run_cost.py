@@ -4,7 +4,7 @@ run_cost.py - Measure the token/cost of generating the weekly report.
 
 Run this AFTER the report has been written. It reads the current Claude Code
 session transcript and sums the token usage of the assistant turns that make up
-this review-week run: from the turn that invoked `extract.py` to the end of the
+this claude-review-week run: from the turn that invoked `extract.py` to the end of the
 file. Those turns (the digest read and the report write) are already flushed to
 the transcript by the time this runs, so the figure is measured, not estimated.
 
@@ -75,7 +75,7 @@ def main():
         except json.JSONDecodeError:
             continue
 
-    # Start at the last extractor invocation; that marks this review-week run.
+    # Start at the last extractor invocation; that marks this claude-review-week run.
     start_idx = 0
     for i, rec in enumerate(records):
         if rec.get("type") == "assistant" and is_extractor_call(rec):

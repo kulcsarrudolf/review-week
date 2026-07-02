@@ -1,6 +1,6 @@
 ---
-name: review-week
-description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, product/business ideas to build based on my work, and skill-improvement ideas. Use when the user wants a weekly AI-usage review or mentions "review-week".
+name: claude-review-week
+description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, product/business ideas to build based on my work, and skill-improvement ideas. Use when the user wants a weekly AI-usage review or mentions "claude-review-week".
 ---
 
 # Weekly AI Usage Review
@@ -13,7 +13,7 @@ over a time window (default: the last 7 days).
 1. **Handle focus intent first (if any).** The user can tag "focus" projects
    that get weighted higher in the report. If their message asks to set, change,
    or clear focus, act on it before generating:
-   - "focus on X" / "set focus to X, Y" / `/review-week focus X,Y` ->
+   - "focus on X" / "set focus to X, Y" / `/claude-review-week focus X,Y` ->
      `python3 scripts/extract.py --set-focus "X,Y"` (persists across runs).
    - "clear focus" / "remove focus" -> `python3 scripts/extract.py --clear-focus`.
    - "just this week focus on X" (temporary) -> add `--focus "X"` to the run in
@@ -114,7 +114,7 @@ over a time window (default: the last 7 days).
    Be concrete and tied to the user's real work, not generic startup ideas.
    Prioritize: lead with the 1-2 ideas with the strongest signal behind them.
 8. **Ideas to improve this skill** - your suggestions for evolving
-   `/review-week` (new metrics, better heuristics, comparisons, etc.).
+   `/claude-review-week` (new metrics, better heuristics, comparisons, etc.).
 
 ## Style
 
