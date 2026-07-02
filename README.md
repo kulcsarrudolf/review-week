@@ -4,12 +4,13 @@ A [Claude Code](https://claude.com/claude-code) skill that reviews how you used 
 
 It reads your local session transcripts (all projects), extracts real usage signals, and produces:
 
-1. A short summary of the projects you worked on
-2. At least 5 improvement tips, each tied to a concrete signal in your data
-3. What you did well and should keep doing
-4. Up to 10 tactical ideas for the next 7 days
-5. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
-6. Ideas to improve the skill itself
+1. A week-over-week comparison: active hours, sessions, commits, lines added/removed, PRs, tokens, tool calls, rework signals, and cost, each with the delta vs the previous equal-length window
+2. A short summary of the projects you worked on
+3. At least 5 improvement tips, each tied to a concrete signal in your data
+4. What you did well and should keep doing
+5. Up to 10 tactical ideas for the next 7 days
+6. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
+7. Ideas to improve the skill itself
 
 Every tip is grounded in your actual data (rework patterns, token/cost, plan-mode usage, PR follow-through), not generic advice.
 
@@ -17,6 +18,7 @@ Every tip is grounded in your actual data (rework patterns, token/cost, plan-mod
 
 Claude Code stores each session as a JSONL transcript under `~/.claude/projects/<project>/`.
 This skill ships a small, dependency-free Python script (`scripts/extract.py`) that parses those transcripts into a compact JSON digest: per-project tool counts, token usage with a cost estimate, PR links, git branches, plan-mode usage, sampled prompts, rework signals, and open threads.
+It also computes a week-over-week comparison by aggregating both the current window and the immediately preceding equal-length window in the same run (no dependency on old reports), plus git metrics (commits, lines added/removed) for the repos you worked in and an estimated active-hours figure from transcript timestamps.
 The skill then has Claude synthesize the report from that digest and write it to `~/.claude/reviews/YYYY-MM-DD.md`.
 
 Nothing leaves your machine. The extractor is pure standard-library Python 3 and makes no network calls.

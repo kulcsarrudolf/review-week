@@ -36,26 +36,36 @@ over a time window (default: the last 7 days).
    Open it:     open ~/.claude/reviews/2026-07-02.md   (or: review-open)
    ```
 
-## Report structure (all seven sections, in order)
+## Report structure (all eight sections, in order)
 
 1. **Week at a glance** - window dates, projects touched, session count, total
    tokens, and estimated cost. State plainly that cost is an estimate.
-2. **Projects worked on** - one short paragraph per active project: what it was
+2. **Week over week** - render `comparison.deltas` as a markdown table with
+   columns: Metric, This period, Previous, Change. Include the sign and, when
+   `pct_change` is present, the percentage. Metrics cover active hours (est),
+   sessions, commits, lines added/removed, PRs opened, tokens, tool calls,
+   rework signals, and estimated cost. Note that "previous" is the immediately
+   preceding window of equal length (`previous_window`), computed in the same
+   run - not a parse of an old report. Add one or two sentences calling out the
+   most meaningful movements (e.g. cost up while output tokens flat means more
+   cache reads; rework down is an improvement). Active hours and commits/LOC are
+   estimates: hours from transcript gaps, git stats from the repos you worked in.
+3. **Projects worked on** - one short paragraph per active project: what it was
    moving toward (use titles and sampled prompts), notable PRs/branches, and
    rough effort (sessions, tokens). Keep it tight.
-3. **Tips to improve (at least 5)** - each tip MUST cite a concrete signal from
+4. **Tips to improve (at least 5)** - each tip MUST cite a concrete signal from
    the data, for example: high `rework_hits` on a project (rework/redo prompts),
    large token/cost with no merged PR, low `plan_mode_msgs` on complex work,
    very long single sessions, heavy Bash use where a tool would be cleaner, or
    vague opening prompts in `sampled_prompts`. No generic advice that could
    apply to anyone.
-4. **Doing well, keep it up** - grounded in the same data: good plan-mode use,
+5. **Doing well, keep it up** - grounded in the same data: good plan-mode use,
    clean PR follow-through, tight scoping, effective subagent/Agent use, etc.
-5. **Ideas for the next 7 days (up to 10)** - tactical execution: draw from
+6. **Ideas for the next 7 days (up to 10)** - tactical execution: draw from
    `open_threads`, unmerged PRs/branches, project momentum, and `repo_todos`.
    Label each idea with its source project. Keep this list about finishing and
    advancing existing work.
-6. **Product and business ideas** - this is the section to emphasize. Mine the
+7. **Product and business ideas** - this is the section to emphasize. Mine the
    week's work for opportunities to build features or products, grounded in what
    the user actually did and the domains/tech they touched (from titles, sampled
    prompts, and project focus). Cover two kinds:
@@ -69,7 +79,7 @@ over a time window (default: the last 7 days).
    monetization or go-to-market path, or the smallest validating first step).
    Be concrete and tied to the user's real work, not generic startup ideas.
    Prioritize: lead with the 1-2 ideas with the strongest signal behind them.
-7. **Ideas to improve this skill** - your suggestions for evolving
+8. **Ideas to improve this skill** - your suggestions for evolving
    `/review-week` (new metrics, better heuristics, comparisons, etc.).
 
 ## Style

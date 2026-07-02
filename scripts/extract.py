@@ -5,7 +5,11 @@ extract.py - Parse Claude Code session transcripts into a compact JSON digest.
 Reads JSONL transcripts under ~/.claude/projects/<slug>/*.jsonl (and
 .../subagents/*.jsonl), filters to a time window, and emits one JSON object on
 stdout with per-project metrics, token/cost estimates, PR outcomes, sampled
-user prompts, rework signals, and open-thread flags.
+user prompts, rework signals, open-thread flags, and a week-over-week
+comparison against the immediately preceding equal-length window.
+
+Also computes git metrics (commits, lines added/removed) for the repos you
+worked in, and an estimated active-hours figure from transcript timestamps.
 
 Pure stdlib. No third-party dependencies.
 
@@ -37,6 +41,10 @@ PRICE = {
 
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
+# Gap (seconds) above which two consecutive messages in a session are treated as
+# separate working stretches rather than continuous active time.
+ACTIVE_GAP_SECONDS = 30 * 60
+
 # User-prompt noise: injected reminders and tool results we should not treat as
 # real user intent when sampling prompts.
 NOISE_PATTERNS = [
@@ -56,7 +64,7 @@ REWORK_RE = re.compile(
 
 
 def parse_window(since):
-    """Return (start_dt, end_dt) in UTC from a --since argument."""
+    """Return (start, end) in UTC from a --since argument."""
     now = datetime.now(timezone.utc)
     if since and ".." in since:
         a, b = since.split("..", 1)
@@ -111,6 +119,58 @@ def is_tool_result_only(content):
     return False
 
 
+def cost_of(tokens):
+    return (
+        tokens.get("input", 0) / 1e6 * PRICE["input"]
+        + tokens.get("output", 0) / 1e6 * PRICE["output"]
+        + tokens.get("cache_read", 0) / 1e6 * PRICE["cache_read"]
+        + tokens.get("cache_write", 0) / 1e6 * PRICE["cache_write"]
+    )
+
+
+def active_hours(sessions_ts):
+    """Estimate active working hours: sum in-session gaps below ACTIVE_GAP_SECONDS."""
+    total = 0.0
+    for stamps in sessions_ts.values():
+        stamps = sorted(stamps)
+        for a, b in zip(stamps, stamps[1:]):
+            gap = b - a
+            if 0 < gap <= ACTIVE_GAP_SECONDS:
+                total += gap
+    return round(total / 3600.0, 1)
+
+
+class WindowAgg:
+    """Lightweight per-window metric accumulator used for comparison."""
+
+    def __init__(self):
+        self.sessions = set()
+        self.active_days = set()
+        self.tokens = defaultdict(int)
+        self.tool_calls = 0
+        self.rework = 0
+        self.prs = set()
+        self.sessions_ts = defaultdict(list)  # sessionId -> [epoch seconds]
+
+    def summary(self, git):
+        tok = dict(self.tokens)
+        return {
+            "sessions": len(self.sessions),
+            "active_days": len(self.active_days),
+            "active_hours_est": active_hours(self.sessions_ts),
+            "prs_opened": len(self.prs),
+            "commits": git["commits"],
+            "loc_added": git["added"],
+            "loc_removed": git["removed"],
+            "tokens": tok,
+            "total_tokens": sum(tok.values()),
+            "output_tokens": tok.get("output", 0),
+            "tool_calls": self.tool_calls,
+            "rework_hits": self.rework,
+            "estimated_cost_usd": round(cost_of(tok), 2),
+        }
+
+
 def blank_project():
     return {
         "sessions": set(),
@@ -132,6 +192,75 @@ def blank_project():
     }
 
 
+def git_window(cwd, start, end):
+    """Return {commits, added, removed} for one repo over [start, end)."""
+    result = {"commits": 0, "added": 0, "removed": 0}
+    if not cwd or not os.path.isdir(os.path.join(cwd, ".git")):
+        return result
+    try:
+        out = subprocess.run(
+            ["git", "-C", cwd, "log",
+             "--since", start.isoformat(), "--until", end.isoformat(),
+             "--no-merges", "--numstat", "--pretty=format:__COMMIT__"],
+            capture_output=True, text=True, timeout=20,
+        ).stdout
+    except (subprocess.SubprocessError, OSError):
+        return result
+    # Split on newlines only: str.splitlines() would also break on control
+    # separators, and a marker line must survive intact to be counted.
+    for line in out.split("\n"):
+        if line == "__COMMIT__":
+            result["commits"] += 1
+        elif "\t" in line:
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                a, d = parts[0], parts[1]
+                result["added"] += int(a) if a.isdigit() else 0
+                result["removed"] += int(d) if d.isdigit() else 0
+    return result
+
+
+def git_metrics(cwds, start, end):
+    """Aggregate git metrics across a set of repo working dirs."""
+    total = {"commits": 0, "added": 0, "removed": 0}
+    per_repo = []
+    for cwd in sorted(c for c in cwds if c):
+        g = git_window(cwd, start, end)
+        if g["commits"] or g["added"] or g["removed"]:
+            per_repo.append({"cwd": cwd, **g})
+        for k in total:
+            total[k] += g[k]
+    return total, per_repo
+
+
+def compare(cur, prev):
+    """Build a metric-by-metric comparison block with deltas."""
+    keys = [
+        ("active_hours_est", "Active hours (est)"),
+        ("sessions", "Sessions"),
+        ("commits", "Commits"),
+        ("loc_added", "Lines added"),
+        ("loc_removed", "Lines removed"),
+        ("prs_opened", "PRs opened"),
+        ("total_tokens", "Total tokens"),
+        ("output_tokens", "Output tokens"),
+        ("tool_calls", "Tool calls"),
+        ("rework_hits", "Rework signals"),
+        ("estimated_cost_usd", "Estimated cost (USD)"),
+    ]
+    rows = []
+    for key, label in keys:
+        c = cur.get(key, 0)
+        p = prev.get(key, 0)
+        delta = round(c - p, 2)
+        pct = round((delta / p) * 100, 1) if p else None
+        rows.append({
+            "metric": label, "key": key,
+            "current": c, "previous": p, "delta": delta, "pct_change": pct,
+        })
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="7d",
@@ -141,10 +270,16 @@ def main():
     args = ap.parse_args()
 
     start, end = parse_window(args.since)
+    length = end - start
+    prev_end = start
+    prev_start = start - length
+    scan_from = prev_start  # broaden mtime pre-filter to cover the previous window
 
-    projects = defaultdict(blank_project)
-    # Per-session tracking for open-thread heuristic.
-    session_last = {}   # sessionId -> (ts, role, is_question, project, title, cwd)
+    projects = defaultdict(blank_project)   # detailed, current window only
+    cur_agg = WindowAgg()
+    prev_agg = WindowAgg()
+    cwds = set()                            # repo dirs seen in either window
+    session_last = {}                       # open-thread heuristic, current window
     malformed = 0
     files_scanned = 0
 
@@ -153,15 +288,13 @@ def main():
     files = glob.glob(pattern_main) + glob.glob(pattern_sub)
 
     for path in files:
-        # Cheap pre-filter: skip files untouched since the window started.
         try:
-            if datetime.fromtimestamp(os.path.getmtime(path), timezone.utc) < start:
+            if datetime.fromtimestamp(os.path.getmtime(path), timezone.utc) < scan_from:
                 continue
         except OSError:
             continue
         files_scanned += 1
 
-        # Derive project slug from the path (dir directly under PROJECTS_DIR).
         rel = os.path.relpath(path, PROJECTS_DIR)
         slug = rel.split(os.sep, 1)[0]
         pname = project_name(slug)
@@ -186,49 +319,90 @@ def main():
                 sid = d.get("sessionId")
                 ts = parse_ts(d.get("timestamp"))
 
-                # Session-level metadata records (no timestamp filtering needed).
+                # Session-level title records (no timestamp filtering).
                 if rtype == "ai-title" and sid:
                     projects[pname]["titles"].setdefault(sid, d.get("aiTitle"))
                     continue
                 if rtype == "custom-title" and sid:
-                    # custom title wins over ai title
                     if d.get("customTitle"):
                         projects[pname]["titles"][sid] = d.get("customTitle")
                     continue
                 if rtype == "pr-link":
                     pts = parse_ts(d.get("timestamp"))
-                    if pts is None or start <= pts < end:
-                        url = d.get("prUrl")
-                        if url:
+                    url = d.get("prUrl")
+                    if url and pts is not None:
+                        if start <= pts < end:
+                            cur_agg.prs.add(url)
                             projects[pname]["prs"][url] = d.get("prRepository")
+                        elif prev_start <= pts < prev_end:
+                            prev_agg.prs.add(url)
+                    elif url and pts is None:
+                        # No timestamp: attribute to current window.
+                        cur_agg.prs.add(url)
+                        projects[pname]["prs"][url] = d.get("prRepository")
                     continue
 
-                # Message records: filter by timestamp window.
-                if ts is not None and not (start <= ts < end):
+                if ts is None:
+                    continue
+                if start <= ts < end:
+                    window = "cur"
+                    agg = cur_agg
+                elif prev_start <= ts < prev_end:
+                    window = "prev"
+                    agg = prev_agg
+                else:
                     continue
 
                 m = d.get("message")
                 if not isinstance(m, dict):
                     continue
 
+                if d.get("cwd"):
+                    cwds.add(d["cwd"])
+
+                # Common per-window aggregation.
+                if sid:
+                    agg.sessions.add(sid)
+                    agg.sessions_ts[sid].append(ts.timestamp())
+                agg.active_days.add(ts.date().isoformat())
+
+                role = m.get("role")
+                content = m.get("content")
+
+                if role == "assistant":
+                    u = m.get("usage") or {}
+                    agg.tokens["input"] += u.get("input_tokens", 0) or 0
+                    agg.tokens["output"] += u.get("output_tokens", 0) or 0
+                    agg.tokens["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
+                    agg.tokens["cache_write"] += u.get("cache_creation_input_tokens", 0) or 0
+                    if isinstance(content, list):
+                        for b in content:
+                            if isinstance(b, dict) and b.get("type") == "tool_use":
+                                agg.tool_calls += 1
+                elif role == "user":
+                    if not is_tool_result_only(content):
+                        txt = text_of(content).strip()
+                        if txt and not is_noise(txt) and REWORK_RE.search(txt):
+                            agg.rework += 1
+
+                # Detailed current-window aggregation (drives the narrative).
+                if window != "cur":
+                    continue
+
                 p = projects[pname]
                 if d.get("cwd") and not p["cwd"]:
-                    p["cwd"] = d.get("cwd")
+                    p["cwd"] = d["cwd"]
                 if sid:
                     p["sessions"].add(sid)
-                if ts:
-                    p["active_days"].add(ts.date().isoformat())
-                    if p["first"] is None or ts < p["first"]:
-                        p["first"] = ts
-                    if p["last"] is None or ts > p["last"]:
-                        p["last"] = ts
+                p["active_days"].add(ts.date().isoformat())
+                if p["first"] is None or ts < p["first"]:
+                    p["first"] = ts
+                if p["last"] is None or ts > p["last"]:
+                    p["last"] = ts
                 if d.get("gitBranch"):
                     p["branches"].add(d["gitBranch"])
                 if d.get("permissionMode") == "plan":
                     p["plan_mode_msgs"] += 1
-
-                role = m.get("role")
-                content = m.get("content")
 
                 if role == "assistant":
                     p["total_asst_msgs"] += 1
@@ -246,30 +420,34 @@ def main():
                                 p["tools"][name] += 1
                                 if name == "Agent":
                                     p["agent_calls"] += 1
-                    # open-thread: assistant ending in a question
                     txt = text_of(content).strip()
                     is_q = txt.endswith("?")
                     if sid:
                         session_last[sid] = (ts, "assistant", is_q, pname,
                                              p["titles"].get(sid), p["cwd"])
-
                 elif role == "user":
                     if is_tool_result_only(content):
-                        # tool result, not a real prompt; still marks session activity
                         if sid:
                             session_last[sid] = (ts, "tool_result", False, pname,
                                                  p["titles"].get(sid), p["cwd"])
                         continue
                     txt = text_of(content).strip()
                     if txt and not is_noise(txt):
-                        p["prompts"].append((ts.isoformat() if ts else "", txt))
+                        p["prompts"].append((ts.isoformat(), txt))
                         if REWORK_RE.search(txt):
                             p["rework_hits"] += 1
                     if sid:
                         session_last[sid] = (ts, "user", False, pname,
                                              p["titles"].get(sid), p["cwd"])
 
-    # --- Build open-threads list ---
+    # --- Git metrics for both windows over the repos worked in ---
+    cur_git, cur_git_repos = git_metrics(cwds, start, end)
+    prev_git, _ = git_metrics(cwds, prev_start, prev_end)
+
+    cur_summary = cur_agg.summary(cur_git)
+    prev_summary = prev_agg.summary(prev_git)
+
+    # --- Open threads (current window) ---
     open_threads = []
     for sid, (ts, role, is_q, pname, title, cwd) in session_last.items():
         reason = None
@@ -279,15 +457,12 @@ def main():
             reason = "ended on an assistant question"
         if reason:
             open_threads.append({
-                "project": pname,
-                "session": sid,
-                "title": title,
-                "last_activity": ts.isoformat() if ts else None,
-                "reason": reason,
+                "project": pname, "session": sid, "title": title,
+                "last_activity": ts.isoformat() if ts else None, "reason": reason,
             })
     open_threads.sort(key=lambda x: x["last_activity"] or "", reverse=True)
 
-    # --- Assemble per-project output ---
+    # --- Per-project detail (current window) ---
     totals = defaultdict(int)
     total_cost = 0.0
     per_project = []
@@ -295,17 +470,11 @@ def main():
         if not p["sessions"] and not p["prompts"]:
             continue
         tok = p["tokens"]
-        cost = (
-            tok["input"] / 1e6 * PRICE["input"]
-            + tok["output"] / 1e6 * PRICE["output"]
-            + tok["cache_read"] / 1e6 * PRICE["cache_read"]
-            + tok["cache_write"] / 1e6 * PRICE["cache_write"]
-        )
+        cost = cost_of(tok)
         total_cost += cost
         for k, v in tok.items():
             totals[k] += v
 
-        # Sample prompts: first, longest, last 3 (deduped, capped).
         prompts = sorted(p["prompts"], key=lambda x: x[0])
         sample = []
         seen = set()
@@ -346,16 +515,11 @@ def main():
 
     per_project.sort(key=lambda x: x["sessions"], reverse=True)
 
-    # --- Optional: recent TODO/FIXME scan in active repos ---
+    # --- Optional recent TODO/FIXME scan ---
     repo_todos = []
     if args.repos_todo:
         since_git = start.strftime("%Y-%m-%d")
-        seen_cwd = set()
-        for pp in per_project:
-            cwd = pp.get("cwd")
-            if not cwd or cwd in seen_cwd or not os.path.isdir(cwd):
-                continue
-            seen_cwd.add(cwd)
+        for cwd in sorted(c for c in cwds if c and os.path.isdir(c)):
             if not os.path.isdir(os.path.join(cwd, ".git")):
                 continue
             try:
@@ -367,7 +531,7 @@ def main():
                 hits = [l[1:].strip() for l in out.stdout.splitlines()
                         if l.startswith("+") and re.search(r"TODO|FIXME", l)]
                 if hits:
-                    repo_todos.append({"project": pp["project"],
+                    repo_todos.append({"project": project_name(os.path.basename(cwd)),
                                        "todos": hits[:15]})
             except (subprocess.SubprocessError, OSError):
                 continue
@@ -375,15 +539,28 @@ def main():
     digest = {
         "window": {"start": start.isoformat(), "end": end.isoformat(),
                    "since_arg": args.since},
+        "previous_window": {"start": prev_start.isoformat(),
+                            "end": prev_end.isoformat()},
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "totals": {
             "projects": len(per_project),
-            "sessions": sum(pp["sessions"] for pp in per_project),
+            "sessions": cur_summary["sessions"],
+            "active_hours_est": cur_summary["active_hours_est"],
+            "commits": cur_git["commits"],
+            "loc_added": cur_git["added"],
+            "loc_removed": cur_git["removed"],
+            "prs_opened": cur_summary["prs_opened"],
             "tokens": dict(totals),
             "estimated_cost_usd": round(total_cost, 2),
             "files_scanned": files_scanned,
             "malformed_lines_skipped": malformed,
         },
+        "comparison": {
+            "current": cur_summary,
+            "previous": prev_summary,
+            "deltas": compare(cur_summary, prev_summary),
+        },
+        "git_by_repo": cur_git_repos,
         "pricing_used": PRICE,
         "per_project": per_project,
         "open_threads": open_threads[:25],
