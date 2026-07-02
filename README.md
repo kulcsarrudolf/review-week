@@ -113,25 +113,32 @@ Then run `review-open` (latest) or `review-open 2026-07-02` (a specific date).
 
 ## Configuring cost estimates
 
-Token cost is a rough estimate. Pricing constants live at the top of `scripts/extract.py`:
+Token cost is a rough estimate. It is computed **per model**: each assistant message records the model it used, so a session that mixes Opus, Sonnet, and Haiku is priced correctly without any configuration.
+
+The pricing table lives at the top of `scripts/extract.py`, keyed by a substring of the model id (input, output USD per 1M tokens):
 
 ```python
-PRICE = {
-    "input": 5.0,        # USD per 1M tokens
-    "output": 25.0,
-    "cache_read": 0.50,  # ~0.1x input
-    "cache_write": 6.25, # ~1.25x input (5-minute cache)
+MODEL_PRICING = {
+    "claude-fable-5":  (10.0, 50.0),
+    "claude-opus-4":   (5.0, 25.0),    # opus 4-5/4-6/4-7/4-8
+    "claude-sonnet-4": (3.0, 15.0),    # sonnet 4-x
+    "claude-haiku-4":  (1.0, 5.0),     # haiku 4-5
+    ...
 }
+DEFAULT_PRICING = (5.0, 25.0)   # unknown model: assume Opus-tier
+CACHE_READ_MULT = 0.10          # cache read  ~0.1x input
+CACHE_WRITE_MULT = 1.25         # cache write ~1.25x input (5-minute cache)
 ```
 
-Defaults are Claude Opus 4.8 rates. Update them if you use a different model or pricing changes.
+Matching is longest-substring, so `claude-opus-4-8` and dated ids like `claude-haiku-4-5-20251001` resolve automatically, and an unknown model falls back to `DEFAULT_PRICING`. Cache read/write rates are derived per model from its input rate. Add a row or adjust the numbers only if pricing changes or you use a model not listed.
 
 ## Development
 
-The skill is two files:
+The skill is:
 
 - `SKILL.md` orchestrates the workflow and defines the report structure.
-- `scripts/extract.py` does the parsing and aggregation.
+- `scripts/extract.py` does the parsing, aggregation, week-over-week comparison, and per-model cost.
+- `scripts/run_cost.py` measures the token/cost of generating the report itself.
 
 Since the repo lives at `~/.claude/skills/claude-review-week`, edits take effect immediately: just run `/claude-review-week` again.
 

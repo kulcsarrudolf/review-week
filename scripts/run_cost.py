@@ -19,13 +19,14 @@ Usage:
 """
 
 import argparse
+import collections
 import glob
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import extract  # noqa: E402  (reuse PRICE, cost_of, PROJECTS_DIR)
+import extract  # noqa: E402  (reuse per-model pricing, cost_of, PROJECTS_DIR)
 
 
 def newest_session():
@@ -81,7 +82,7 @@ def main():
         if rec.get("type") == "assistant" and is_extractor_call(rec):
             start_idx = i
 
-    tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+    tokens_by_model = collections.defaultdict(lambda: collections.defaultdict(int))
     turns = 0
     for rec in records[start_idx:]:
         if rec.get("type") != "assistant":
@@ -93,20 +94,19 @@ def main():
         if not isinstance(u, dict):
             continue
         turns += 1
-        tokens["input"] += u.get("input_tokens", 0) or 0
-        tokens["output"] += u.get("output_tokens", 0) or 0
-        tokens["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
-        tokens["cache_write"] += u.get("cache_creation_input_tokens", 0) or 0
+        extract.add_usage(tokens_by_model, m.get("model") or "unknown", u)
 
+    tokens = extract.flat_tokens(tokens_by_model)
     total = sum(tokens.values())
     out = {
         "session": os.path.basename(path),
         "assistant_turns_counted": turns,
+        "models": sorted(tokens_by_model.keys()),
         "tokens": tokens,
         "total_tokens": total,
-        "estimated_cost_usd": round(extract.cost_of(tokens), 4),
-        "note": "measured from the session transcript; excludes the final "
-                "footer-writing turn, so it is a close lower bound",
+        "estimated_cost_usd": round(extract.cost_of(tokens_by_model), 4),
+        "note": "measured from the session transcript; per-model pricing; "
+                "excludes the final footer-writing turn, so it is a close lower bound",
     }
     json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")

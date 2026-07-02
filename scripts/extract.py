@@ -32,15 +32,26 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-# --- Pricing (USD per 1M tokens). Opus 4.8 rates; adjust if pricing changes. ---
-# Cost is a rough estimate only. Cache-write billed at 5m-cache rate (1.25x input),
-# cache-read at 0.1x input. Base input/output from the claude-api reference.
-PRICE = {
-    "input": 5.0,
-    "output": 25.0,
-    "cache_read": 0.50,
-    "cache_write": 6.25,
+# --- Pricing (USD per 1M tokens), keyed by a substring of the model id, so cost
+# works across model types automatically (Opus, Sonnet, Haiku, Fable, ...). Each
+# entry is (input, output). Cache read is ~0.1x input, cache write ~1.25x input
+# (5-minute cache), derived per model. Extend or adjust if pricing changes.
+MODEL_PRICING = {
+    "claude-fable-5":    (10.0, 50.0),
+    "claude-mythos-5":   (10.0, 50.0),
+    "claude-opus-4-1":   (15.0, 75.0),
+    "claude-opus-4-0":   (15.0, 75.0),
+    "claude-opus-4":     (5.0, 25.0),    # opus 4-5/4-6/4-7/4-8
+    "claude-sonnet-4":   (3.0, 15.0),    # sonnet 4-x
+    "claude-haiku-4":    (1.0, 5.0),     # haiku 4-5
+    "claude-3-opus":     (15.0, 75.0),
+    "claude-3-5-sonnet": (3.0, 15.0),
+    "claude-3-5-haiku":  (0.80, 4.0),
+    "claude-3-haiku":    (0.25, 1.25),
 }
+DEFAULT_PRICING = (5.0, 25.0)   # unknown model: assume Opus-tier
+CACHE_READ_MULT = 0.10
+CACHE_WRITE_MULT = 1.25
 
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
@@ -149,13 +160,47 @@ def is_tool_result_only(content):
     return False
 
 
-def cost_of(tokens):
+def price_for(model):
+    """Input/output USD per 1M tokens for a model id (longest substring match)."""
+    best, best_len = DEFAULT_PRICING, -1
+    for key, rate in MODEL_PRICING.items():
+        if key in (model or "") and len(key) > best_len:
+            best, best_len = rate, len(key)
+    return best
+
+
+def cost_of_model(model, tok):
+    """Cost for one model's token dict (input/output/cache_read/cache_write)."""
+    inp, out = price_for(model)
     return (
-        tokens.get("input", 0) / 1e6 * PRICE["input"]
-        + tokens.get("output", 0) / 1e6 * PRICE["output"]
-        + tokens.get("cache_read", 0) / 1e6 * PRICE["cache_read"]
-        + tokens.get("cache_write", 0) / 1e6 * PRICE["cache_write"]
+        tok.get("input", 0) / 1e6 * inp
+        + tok.get("output", 0) / 1e6 * out
+        + tok.get("cache_read", 0) / 1e6 * inp * CACHE_READ_MULT
+        + tok.get("cache_write", 0) / 1e6 * inp * CACHE_WRITE_MULT
     )
+
+
+def cost_of(tokens_by_model):
+    """Total cost for a {model: {input, output, cache_read, cache_write}} map."""
+    return sum(cost_of_model(model, tok) for model, tok in tokens_by_model.items())
+
+
+def add_usage(bucket, model, u):
+    """Accumulate an assistant message's usage into a {model: tokendict} bucket."""
+    t = bucket[model]
+    t["input"] += u.get("input_tokens", 0) or 0
+    t["output"] += u.get("output_tokens", 0) or 0
+    t["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
+    t["cache_write"] += u.get("cache_creation_input_tokens", 0) or 0
+
+
+def flat_tokens(tokens_by_model):
+    """Collapse a {model: tokendict} map into one summed token dict."""
+    flat = defaultdict(int)
+    for tok in tokens_by_model.values():
+        for k, v in tok.items():
+            flat[k] += v
+    return dict(flat)
 
 
 def active_hours(sessions_ts):
@@ -176,14 +221,14 @@ class WindowAgg:
     def __init__(self):
         self.sessions = set()
         self.active_days = set()
-        self.tokens = defaultdict(int)
+        self.tokens_by_model = defaultdict(lambda: defaultdict(int))
         self.tool_calls = 0
         self.rework = 0
         self.prs = set()
         self.sessions_ts = defaultdict(list)  # sessionId -> [epoch seconds]
 
     def summary(self, git):
-        tok = dict(self.tokens)
+        tok = flat_tokens(self.tokens_by_model)
         return {
             "sessions": len(self.sessions),
             "active_days": len(self.active_days),
@@ -197,7 +242,7 @@ class WindowAgg:
             "output_tokens": tok.get("output", 0),
             "tool_calls": self.tool_calls,
             "rework_hits": self.rework,
-            "estimated_cost_usd": round(cost_of(tok), 2),
+            "estimated_cost_usd": round(cost_of(self.tokens_by_model), 2),
         }
 
 
@@ -208,7 +253,7 @@ def blank_project():
         "first": None,
         "last": None,
         "tools": defaultdict(int),
-        "tokens": defaultdict(int),
+        "tokens_by_model": defaultdict(lambda: defaultdict(int)),
         "models": defaultdict(int),
         "prs": {},                # prUrl -> repo
         "branches": set(),
@@ -418,11 +463,8 @@ def main():
                 content = m.get("content")
 
                 if role == "assistant":
-                    u = m.get("usage") or {}
-                    agg.tokens["input"] += u.get("input_tokens", 0) or 0
-                    agg.tokens["output"] += u.get("output_tokens", 0) or 0
-                    agg.tokens["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
-                    agg.tokens["cache_write"] += u.get("cache_creation_input_tokens", 0) or 0
+                    add_usage(agg.tokens_by_model, m.get("model") or "unknown",
+                              m.get("usage") or {})
                     if isinstance(content, list):
                         for b in content:
                             if isinstance(b, dict) and b.get("type") == "tool_use":
@@ -456,11 +498,8 @@ def main():
                     p["total_asst_msgs"] += 1
                     if m.get("model"):
                         p["models"][m["model"]] += 1
-                    u = m.get("usage") or {}
-                    p["tokens"]["input"] += u.get("input_tokens", 0) or 0
-                    p["tokens"]["output"] += u.get("output_tokens", 0) or 0
-                    p["tokens"]["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
-                    p["tokens"]["cache_write"] += u.get("cache_creation_input_tokens", 0) or 0
+                    add_usage(p["tokens_by_model"], m.get("model") or "unknown",
+                              m.get("usage") or {})
                     if isinstance(content, list):
                         for b in content:
                             if isinstance(b, dict) and b.get("type") == "tool_use":
@@ -517,8 +556,8 @@ def main():
     for pname, p in projects.items():
         if not p["sessions"] and not p["prompts"]:
             continue
-        tok = p["tokens"]
-        cost = cost_of(tok)
+        tok = flat_tokens(p["tokens_by_model"])
+        cost = cost_of(p["tokens_by_model"])
         total_cost += cost
         for k, v in tok.items():
             totals[k] += v
@@ -617,7 +656,13 @@ def main():
         "git_by_repo": cur_git_repos,
         "focus_projects": focus_names,
         "focus_matched": [pp["project"] for pp in per_project if pp["focus"]],
-        "pricing_used": PRICE,
+        "pricing_used": {
+            "model_pricing_input_output": {k: list(v) for k, v in MODEL_PRICING.items()},
+            "default": list(DEFAULT_PRICING),
+            "cache_read_mult": CACHE_READ_MULT,
+            "cache_write_mult": CACHE_WRITE_MULT,
+            "note": "cost is per-model from each message's model id; unknown models use default",
+        },
         "per_project": per_project,
         "open_threads": open_threads[:25],
         "repo_todos": repo_todos,
