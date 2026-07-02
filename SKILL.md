@@ -1,6 +1,6 @@
 ---
 name: claude-review-week
-description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, product/business ideas to build based on my work, and skill-improvement ideas. Use when the user wants a weekly AI-usage review or mentions "claude-review-week".
+description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, and product/business ideas to build based on my work. Use when the user wants a weekly AI-usage review or mentions "claude-review-week".
 ---
 
 # Weekly AI Usage Review
@@ -56,7 +56,7 @@ over a time window (default: the last 7 days).
    briefly covering the rest). Mark focus projects in the report (e.g. a
    "(focus)" tag). When no focus is set, weight purely by activity as before.
 
-5. **Write the report** with the eight sections below, then **write it to a file**
+5. **Write the report** with the seven sections below, then **write it to a file**
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
@@ -84,7 +84,7 @@ over a time window (default: the last 7 days).
    Open it:     open ~/.claude/reviews/2026-07-02.md   (or: review-open)
    ```
 
-## Report structure (all eight sections, in order)
+## Report structure (all seven sections, in order)
 
 1. **Week at a glance** - window dates, projects touched, session count, total
    tokens, and estimated cost. State plainly that cost is an estimate. If
@@ -129,8 +129,6 @@ over a time window (default: the last 7 days).
    monetization or go-to-market path, or the smallest validating first step).
    Be concrete and tied to the user's real work, not generic startup ideas.
    Prioritize: lead with the 1-2 ideas with the strongest signal behind them.
-8. **Ideas to improve this skill** - your suggestions for evolving
-   `/claude-review-week` (new metrics, better heuristics, comparisons, etc.).
 
 ## Style
 

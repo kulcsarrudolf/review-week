@@ -10,8 +10,7 @@ It reads your local session transcripts (all projects), extracts real usage sign
 4. What you did well and should keep doing
 5. Up to 10 tactical ideas for the next 7 days
 6. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
-7. Ideas to improve the skill itself
-8. A footer showing the measured token/cost of generating the report itself
+7. A footer showing the measured token/cost of generating the report itself
 
 You can tag one or more projects as your **focus** so tips and ideas weight toward them (see [Focus projects](#focus-projects) below).
 
