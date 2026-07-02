@@ -1,6 +1,6 @@
 ---
 name: review-week
-description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, and skill-improvement ideas. Use when the user wants a weekly AI-usage review or mentions "review-week".
+description: Review my Claude Code usage over the last 7 days and produce a weekly report with improvement tips, wins to keep, a project summary, next-week ideas, product/business ideas to build based on my work, and skill-improvement ideas. Use when the user wants a weekly AI-usage review or mentions "review-week".
 ---
 
 # Weekly AI Usage Review
@@ -25,7 +25,7 @@ over a time window (default: the last 7 days).
    `open_threads`, and `repo_todos`. The sampled prompts show how the user
    actually steers Claude; use them for qualitative tips.
 
-3. **Write the report** with the six sections below, then **write it to a file**
+3. **Write the report** with the seven sections below, then **write it to a file**
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
@@ -36,7 +36,7 @@ over a time window (default: the last 7 days).
    Open it:     open ~/.claude/reviews/2026-07-02.md   (or: review-open)
    ```
 
-## Report structure (all six sections, in order)
+## Report structure (all seven sections, in order)
 
 1. **Week at a glance** - window dates, projects touched, session count, total
    tokens, and estimated cost. State plainly that cost is an estimate.
@@ -51,10 +51,25 @@ over a time window (default: the last 7 days).
    apply to anyone.
 4. **Doing well, keep it up** - grounded in the same data: good plan-mode use,
    clean PR follow-through, tight scoping, effective subagent/Agent use, etc.
-5. **Ideas for the next 7 days (up to 10)** - draw from `open_threads`,
-   unmerged PRs/branches, project momentum, `repo_todos`, and your own synthesis
-   of what each project needs next. Label each idea with its source project.
-6. **Ideas to improve this skill** - your suggestions for evolving
+5. **Ideas for the next 7 days (up to 10)** - tactical execution: draw from
+   `open_threads`, unmerged PRs/branches, project momentum, and `repo_todos`.
+   Label each idea with its source project. Keep this list about finishing and
+   advancing existing work.
+6. **Product and business ideas** - this is the section to emphasize. Mine the
+   week's work for opportunities to build features or products, grounded in what
+   the user actually did and the domains/tech they touched (from titles, sampled
+   prompts, and project focus). Cover two kinds:
+   - **Feature/product extensions** of an existing project (e.g. turn a spike
+     into a sellable capability, productize a repeated internal workflow).
+   - **Standalone product or tool ideas** the week's experience uniquely
+     positions the user to build (a pain they hit repeatedly, a reusable piece
+     they rebuilt across projects, a niche they now understand).
+   For each idea give 2-4 lines: **what it is**, **who it is for**, **the problem
+   it solves**, and a **business angle** (why it could have value, a rough
+   monetization or go-to-market path, or the smallest validating first step).
+   Be concrete and tied to the user's real work, not generic startup ideas.
+   Prioritize: lead with the 1-2 ideas with the strongest signal behind them.
+7. **Ideas to improve this skill** - your suggestions for evolving
    `/review-week` (new metrics, better heuristics, comparisons, etc.).
 
 ## Style

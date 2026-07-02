@@ -7,8 +7,9 @@ It reads your local session transcripts (all projects), extracts real usage sign
 1. A short summary of the projects you worked on
 2. At least 5 improvement tips, each tied to a concrete signal in your data
 3. What you did well and should keep doing
-4. Up to 10 ideas for the next 7 days
-5. Ideas to improve the skill itself
+4. Up to 10 tactical ideas for the next 7 days
+5. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
+6. Ideas to improve the skill itself
 
 Every tip is grounded in your actual data (rework patterns, token/cost, plan-mode usage, PR follow-through), not generic advice.
 
