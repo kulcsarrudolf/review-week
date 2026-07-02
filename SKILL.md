@@ -44,7 +44,24 @@ over a time window (default: the last 7 days).
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
-5. **Point the user to the file.** After the inline summary, print the full
+5. **Measure and append the generation cost.** After the report file exists, run:
+   ```
+   python3 scripts/run_cost.py
+   ```
+   It reads the live session transcript and reports the measured tokens and cost
+   of the turns that produced this report (from the extractor call to now). Then
+   append a short footer to the report file and echo it inline, for example:
+   ```
+   ## Report generation cost
+
+   Generating this report used ~3.5M tokens (mostly cache reads) and cost about
+   $0.32, measured from this session. This excludes the final footer step, so it
+   is a close lower bound. Cheaper on a fresh session than deep in a long one.
+   ```
+   Use the real numbers from `run_cost.py` (`total_tokens`, `estimated_cost_usd`).
+   State plainly it is a measured lower bound, not an estimate of the whole turn.
+
+6. **Point the user to the file.** After the inline summary, print the full
    report path and a ready-to-run open command on its own line, for example:
    ```
    Full report: ~/.claude/reviews/2026-07-02.md

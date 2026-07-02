@@ -11,6 +11,7 @@ It reads your local session transcripts (all projects), extracts real usage sign
 5. Up to 10 tactical ideas for the next 7 days
 6. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
 7. Ideas to improve the skill itself
+8. A footer showing the measured token/cost of generating the report itself
 
 You can tag one or more projects as your **focus** so tips and ideas weight toward them (see [Focus projects](#focus-projects) below).
 
@@ -22,6 +23,7 @@ Claude Code stores each session as a JSONL transcript under `~/.claude/projects/
 This skill ships a small, dependency-free Python script (`scripts/extract.py`) that parses those transcripts into a compact JSON digest: per-project tool counts, token usage with a cost estimate, PR links, git branches, plan-mode usage, sampled prompts, rework signals, and open threads.
 It also computes a week-over-week comparison by aggregating both the current window and the immediately preceding equal-length window in the same run (no dependency on old reports), plus git metrics (commits, lines added/removed) for the repos you worked in and an estimated active-hours figure from transcript timestamps.
 The skill then has Claude synthesize the report from that digest and write it to `~/.claude/reviews/YYYY-MM-DD.md`.
+A second helper (`scripts/run_cost.py`) reads the live session transcript afterward and reports the measured tokens and cost of generating the report itself, which the skill appends as a footer.
 
 Nothing leaves your machine. The extractor is pure standard-library Python 3 and makes no network calls.
 
