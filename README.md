@@ -27,6 +27,15 @@ A second helper (`scripts/run_cost.py`) reads the live session transcript afterw
 
 Nothing leaves your machine. The extractor is pure standard-library Python 3 and makes no network calls.
 
+## Prerequisites
+
+- **Claude Code**, used at least a little, so there are session transcripts under `~/.claude/projects/` to analyze. With no history there is nothing to report on.
+- **Python 3.8+** available as `python3`. The scripts are pure standard library, so there is nothing to `pip install`.
+- **git** on your `PATH` (optional): used for the commit and lines added/removed metrics. Without it those numbers show zero; everything else still works.
+- macOS or Linux shell. The optional `review-open` helper uses the macOS `open` command; on Linux swap it for `xdg-open`.
+
+Everything runs locally. No API key is required to run the skill (Claude Code itself already handles auth).
+
 ## Install
 
 Clone into your Claude Code skills directory:
