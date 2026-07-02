@@ -29,6 +29,13 @@ over a time window (default: the last 7 days).
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
+4. **Point the user to the file.** After the inline summary, print the full
+   report path and a ready-to-run open command on its own line, for example:
+   ```
+   Full report: ~/.claude/reviews/2026-07-02.md
+   Open it:     open ~/.claude/reviews/2026-07-02.md   (or: review-open)
+   ```
+
 ## Report structure (all six sections, in order)
 
 1. **Week at a glance** - window dates, projects touched, session count, total

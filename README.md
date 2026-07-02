@@ -65,6 +65,21 @@ python3 ~/.claude/skills/review-week/scripts/extract.py --since 7d | python3 -m 
 - A condensed summary printed inline in the chat.
 
 Keeping dated reports lets you compare week over week.
+Each run also prints the report path and an `open` command so you can jump straight to it.
+
+### Optional: an `open-latest` helper
+
+Add this to your shell config (`~/.zshrc` or `~/.bashrc`) to open the most recent report with one command:
+
+```sh
+review-open() {
+  local dir="$HOME/.claude/reviews" file
+  if [ -n "$1" ]; then file="$dir/$1.md"; else file=$(ls -t "$dir"/*.md 2>/dev/null | head -1); fi
+  [ -f "$file" ] && open "$file" || echo "No report found in $dir" >&2
+}
+```
+
+Then run `review-open` (latest) or `review-open 2026-07-02` (a specific date).
 
 ## Configuring cost estimates
 
