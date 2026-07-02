@@ -10,9 +10,19 @@ over a time window (default: the last 7 days).
 
 ## Steps
 
-1. **Run the extractor.** From this skill's directory:
+1. **Handle focus intent first (if any).** The user can tag "focus" projects
+   that get weighted higher in the report. If their message asks to set, change,
+   or clear focus, act on it before generating:
+   - "focus on X" / "set focus to X, Y" / `/review-week focus X,Y` ->
+     `python3 scripts/extract.py --set-focus "X,Y"` (persists across runs).
+   - "clear focus" / "remove focus" -> `python3 scripts/extract.py --clear-focus`.
+   - "just this week focus on X" (temporary) -> add `--focus "X"` to the run in
+     step 2 instead of persisting.
+   Otherwise, do nothing here; the saved focus set is used automatically.
+
+2. **Run the extractor.** From this skill's directory:
    ```
-   python3 scripts/extract.py [--since <window>] [--repos-todo]
+   python3 scripts/extract.py [--since <window>] [--focus <names>] [--repos-todo]
    ```
    - Pass through any window the user gave: `--since 14d`, or a range like
      `--since 2026-06-25..2026-07-02`. Default is `7d` (no arg needed).
@@ -20,16 +30,21 @@ over a time window (default: the last 7 days).
      TODO/FIXME added in their repos. It is slower; skip it otherwise.
    - The script prints one JSON digest to stdout. Capture it.
 
-2. **Read the digest.** Reason from `per_project` (tools, tokens, cost, PRs,
-   branches, plan-mode use, rework hits, sampled prompts, titles),
-   `open_threads`, and `repo_todos`. The sampled prompts show how the user
-   actually steers Claude; use them for qualitative tips.
+3. **Read the digest.** Reason from `per_project` (tools, tokens, cost, PRs,
+   branches, plan-mode use, rework hits, sampled prompts, titles, and `focus`),
+   `open_threads`, `repo_todos`, and `focus_matched`. The sampled prompts show
+   how the user actually steers Claude; use them for qualitative tips.
+   **Focus weighting:** when `focus_matched` is non-empty, give those projects
+   clear priority in the Tips, Next-7-days, and Product/business sections: lead
+   with them, and aim at least half of each list at focus projects (while still
+   briefly covering the rest). Mark focus projects in the report (e.g. a
+   "(focus)" tag). When no focus is set, weight purely by activity as before.
 
-3. **Write the report** with the seven sections below, then **write it to a file**
+4. **Write the report** with the eight sections below, then **write it to a file**
    at `~/.claude/reviews/YYYY-MM-DD.md` (today's date; create the dir if needed)
    and print a condensed version inline in chat.
 
-4. **Point the user to the file.** After the inline summary, print the full
+5. **Point the user to the file.** After the inline summary, print the full
    report path and a ready-to-run open command on its own line, for example:
    ```
    Full report: ~/.claude/reviews/2026-07-02.md
@@ -39,7 +54,9 @@ over a time window (default: the last 7 days).
 ## Report structure (all eight sections, in order)
 
 1. **Week at a glance** - window dates, projects touched, session count, total
-   tokens, and estimated cost. State plainly that cost is an estimate.
+   tokens, and estimated cost. State plainly that cost is an estimate. If
+   `focus_matched` is non-empty, name the focus project(s) here so it is clear
+   the report is weighted toward them.
 2. **Week over week** - render `comparison.deltas` as a markdown table with
    columns: Metric, This period, Previous, Change. Include the sign and, when
    `pct_change` is present, the percentage. Metrics cover active hours (est),

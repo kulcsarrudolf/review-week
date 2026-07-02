@@ -17,6 +17,9 @@ Usage:
     extract.py [--since 7d] [--repos-todo]
     extract.py --since 14d
     extract.py --since 2026-06-25..2026-07-02
+    extract.py --set-focus call-center-poc,igemag-ai   # persist focus tags
+    extract.py --focus igemag-ai                        # focus for this run only
+    extract.py --clear-focus                            # remove all focus tags
 """
 
 import argparse
@@ -40,6 +43,33 @@ PRICE = {
 }
 
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
+
+# Persistent "focus" tags. Projects listed here get their tips, next-week
+# ideas, and product ideas weighted higher. Survives across runs (including the
+# scheduled weekly run, which starts cold).
+FOCUS_CONFIG = os.path.expanduser("~/.claude/reviews/focus.json")
+
+
+def _norm(s):
+    """Normalize a name for forgiving matching (case/separator-insensitive)."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def load_focus():
+    try:
+        with open(FOCUS_CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+        foc = data.get("focus", [])
+        return [str(x) for x in foc] if isinstance(foc, list) else []
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+
+
+def save_focus(names):
+    os.makedirs(os.path.dirname(FOCUS_CONFIG), exist_ok=True)
+    with open(FOCUS_CONFIG, "w", encoding="utf-8") as f:
+        json.dump({"focus": names}, f, indent=2)
+        f.write("\n")
 
 # Gap (seconds) above which two consecutive messages in a session are treated as
 # separate working stretches rather than continuous active time.
@@ -267,7 +297,25 @@ def main():
                     help="Window: 'Nd' (e.g. 7d) or 'YYYY-MM-DD..YYYY-MM-DD'.")
     ap.add_argument("--repos-todo", action="store_true",
                     help="Also scan active git repos for recent TODO/FIXME (heavier).")
+    ap.add_argument("--focus", default=None,
+                    help="Comma-separated project names to focus on for THIS run only.")
+    ap.add_argument("--set-focus", default=None,
+                    help="Comma-separated project names to save as the persistent focus set.")
+    ap.add_argument("--clear-focus", action="store_true",
+                    help="Clear the persistent focus set.")
     args = ap.parse_args()
+
+    # Resolve focus: --set-focus/--clear-focus persist; --focus is a one-off
+    # override; otherwise fall back to the saved config.
+    if args.clear_focus:
+        save_focus([])
+    if args.set_focus is not None:
+        save_focus([s.strip() for s in args.set_focus.split(",") if s.strip()])
+    if args.focus is not None:
+        focus_names = [s.strip() for s in args.focus.split(",") if s.strip()]
+    else:
+        focus_names = load_focus()
+    focus_norms = {_norm(x) for x in focus_names}
 
     start, end = parse_window(args.since)
     length = end - start
@@ -491,8 +539,13 @@ def main():
             for it in prompts[-3:]:
                 add(it)
 
+        is_focus = bool(focus_norms) and (
+            _norm(pname) in focus_norms
+            or (p["cwd"] and _norm(os.path.basename(p["cwd"])) in focus_norms)
+        )
         per_project.append({
             "project": pname,
+            "focus": is_focus,
             "cwd": p["cwd"],
             "sessions": len(p["sessions"]),
             "active_days": sorted(p["active_days"]),
@@ -513,7 +566,8 @@ def main():
             "sampled_prompts": sample,
         })
 
-    per_project.sort(key=lambda x: x["sessions"], reverse=True)
+    # Focus projects first, then by session count.
+    per_project.sort(key=lambda x: (not x["focus"], -x["sessions"]))
 
     # --- Optional recent TODO/FIXME scan ---
     repo_todos = []
@@ -561,6 +615,8 @@ def main():
             "deltas": compare(cur_summary, prev_summary),
         },
         "git_by_repo": cur_git_repos,
+        "focus_projects": focus_names,
+        "focus_matched": [pp["project"] for pp in per_project if pp["focus"]],
         "pricing_used": PRICE,
         "per_project": per_project,
         "open_threads": open_threads[:25],

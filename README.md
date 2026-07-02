@@ -12,6 +12,8 @@ It reads your local session transcripts (all projects), extracts real usage sign
 6. Product and business ideas: features or products worth building, mined from the week's work (what it is, who it is for, the problem, and a business angle)
 7. Ideas to improve the skill itself
 
+You can tag one or more projects as your **focus** so tips and ideas weight toward them (see [Focus projects](#focus-projects) below).
+
 Every tip is grounded in your actual data (rework patterns, token/cost, plan-mode usage, PR follow-through), not generic advice.
 
 ## How it works
@@ -61,6 +63,29 @@ python3 ~/.claude/skills/review-week/scripts/extract.py --since 7d | python3 -m 
 | `--since 7d` | Rolling window of N days (default `7d`). |
 | `--since 2026-06-25..2026-07-02` | Explicit date range (inclusive). |
 | `--repos-todo` | Also scan active git repos for recently added `TODO`/`FIXME` to seed next-week ideas. Slower; off by default. |
+| `--set-focus a,b` | Persist a "focus" set (see below). Survives future runs. |
+| `--focus a,b` | Focus for this run only, without persisting. |
+| `--clear-focus` | Remove all focus tags. |
+
+## Focus projects
+
+Tag one or more projects as your focus and the report weights its tips, next-week ideas, and product ideas toward them (they also sort first and get a `(focus)` tag).
+
+In Claude Code, just say it:
+
+```
+/review-week focus call-center-poc, igemag-ai
+/review-week clear focus
+```
+
+Or set it directly:
+
+```sh
+python3 ~/.claude/skills/review-week/scripts/extract.py --set-focus "call-center-poc,igemag-ai"
+```
+
+The focus set persists in `~/.claude/reviews/focus.json`, so the scheduled weekly run picks it up automatically.
+Matching is forgiving about case and separators (`Call Center POC` matches `call-center-poc`).
 
 ## Output
 
