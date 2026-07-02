@@ -1,0 +1,104 @@
+# review-week
+
+A [Claude Code](https://claude.com/claude-code) skill that reviews how you used Claude Code over the last 7 days and turns it into an actionable weekly report.
+
+It reads your local session transcripts (all projects), extracts real usage signals, and produces:
+
+1. A short summary of the projects you worked on
+2. At least 5 improvement tips, each tied to a concrete signal in your data
+3. What you did well and should keep doing
+4. Up to 10 ideas for the next 7 days
+5. Ideas to improve the skill itself
+
+Every tip is grounded in your actual data (rework patterns, token/cost, plan-mode usage, PR follow-through), not generic advice.
+
+## How it works
+
+Claude Code stores each session as a JSONL transcript under `~/.claude/projects/<project>/`.
+This skill ships a small, dependency-free Python script (`scripts/extract.py`) that parses those transcripts into a compact JSON digest: per-project tool counts, token usage with a cost estimate, PR links, git branches, plan-mode usage, sampled prompts, rework signals, and open threads.
+The skill then has Claude synthesize the report from that digest and write it to `~/.claude/reviews/YYYY-MM-DD.md`.
+
+Nothing leaves your machine. The extractor is pure standard-library Python 3 and makes no network calls.
+
+## Install
+
+Clone into your Claude Code skills directory:
+
+```sh
+git clone https://github.com/kulcsarrudolf/review-week.git ~/.claude/skills/review-week
+```
+
+That is all. Claude Code discovers skills in `~/.claude/skills/` automatically.
+
+## Usage
+
+In Claude Code, run:
+
+```
+/review-week
+```
+
+Optional time window (defaults to the last 7 days):
+
+```
+/review-week 14d
+/review-week 2026-06-25..2026-07-02
+```
+
+You can also run the extractor directly to inspect the raw digest:
+
+```sh
+python3 ~/.claude/skills/review-week/scripts/extract.py --since 7d | python3 -m json.tool
+```
+
+### Extractor options
+
+| Flag | Description |
+|---|---|
+| `--since 7d` | Rolling window of N days (default `7d`). |
+| `--since 2026-06-25..2026-07-02` | Explicit date range (inclusive). |
+| `--repos-todo` | Also scan active git repos for recently added `TODO`/`FIXME` to seed next-week ideas. Slower; off by default. |
+
+## Output
+
+- Full report written to `~/.claude/reviews/YYYY-MM-DD.md`.
+- A condensed summary printed inline in the chat.
+
+Keeping dated reports lets you compare week over week.
+
+## Configuring cost estimates
+
+Token cost is a rough estimate. Pricing constants live at the top of `scripts/extract.py`:
+
+```python
+PRICE = {
+    "input": 5.0,        # USD per 1M tokens
+    "output": 25.0,
+    "cache_read": 0.50,  # ~0.1x input
+    "cache_write": 6.25, # ~1.25x input (5-minute cache)
+}
+```
+
+Defaults are Claude Opus 4.8 rates. Update them if you use a different model or pricing changes.
+
+## Development
+
+The skill is two files:
+
+- `SKILL.md` orchestrates the workflow and defines the report structure.
+- `scripts/extract.py` does the parsing and aggregation.
+
+Since the repo lives at `~/.claude/skills/review-week`, edits take effect immediately: just run `/review-week` again.
+
+Ideas for contributions:
+
+- Week-over-week deltas by reading the previous report in `~/.claude/reviews/`.
+- Real PR merge status via `gh` (not just PRs opened).
+- Per-day activity breakdown and a busiest-day callout.
+- Cache-vs-non-cache cost split.
+
+Issues and pull requests welcome.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
